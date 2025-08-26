@@ -14,6 +14,8 @@ import torch
 from datasets.coco_eval import CocoEvaluator
 import util.misc as utils
 from util.box_ops import rescale_bboxes
+# import sys
+# sys.path.append("/content/drive/MyDrive/classroom-behavior/TSG/RelTR")
 from lib.evaluation.sg_eval import BasicSceneGraphEvaluator, calculate_mR_from_evaluator_list
 from lib.openimages_evaluation import task_evaluation_sg
 

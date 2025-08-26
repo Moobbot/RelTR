@@ -1,205 +1,406 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-# Copyright (c) Institute of Information Processing, Leibniz University Hannover.
-import argparse
-from PIL import Image
-import matplotlib.pyplot as plt
+# import os
+# import json
+# from PIL import Image
+# import torch
+# import torchvision.transforms as T
+# from models import build_model
+# from transformers import AutoTokenizer, AutoModelForCausalLM
+# import argparse
 
+# # ==== ARGPARSE ====
+# def get_args():
+#     parser = argparse.ArgumentParser(description="RelTR inference + translate scene graph")
+#     parser.add_argument('--img_dir', type=str, required=True, help="Folder of test images")
+#     parser.add_argument('--output_dir', type=str, default="outputs_reltr", help="Folder to save JSON results")
+#     parser.add_argument('--device', type=str, default='cuda', help="Device: 'cuda' or 'cpu'")
+#     parser.add_argument('--checkpoint', type=str, required=True, help="Path to RelTR checkpoint")
+#     parser.add_argument('--translation_model', type=str, default="Qwen/Qwen3-8B", help="HuggingFace model for translation")
+#     parser.add_argument('--threshold', type=float, default=0.35, help="Confidence threshold for keeping relations")
+#     parser.add_argument('--topk', type=int, default=10, help="Top-K relations per image")
+#     return parser.parse_args()
+
+# # ==== LABELS ====
+# CLASSES = [ 'N/A', 'airplane', 'animal', 'arm', 'bag', 'banana', 'basket', 'beach', 'bear', 'bed', 'bench', 'bike',
+#             'bird', 'board', 'boat', 'book', 'boot', 'bottle', 'bowl', 'box', 'boy', 'branch', 'building',
+#             'bus', 'cabinet', 'cap', 'car', 'cat', 'chair', 'child', 'clock', 'coat', 'counter', 'cow', 'cup',
+#             'curtain', 'desk', 'dog', 'door', 'drawer', 'ear', 'elephant', 'engine', 'eye', 'face', 'fence',
+#             'finger', 'flag', 'flower', 'food', 'fork', 'fruit', 'giraffe', 'girl', 'glass', 'glove', 'guy',
+#             'hair', 'hand', 'handle', 'hat', 'head', 'helmet', 'hill', 'horse', 'house', 'jacket', 'jean',
+#             'kid', 'kite', 'lady', 'lamp', 'laptop', 'leaf', 'leg', 'letter', 'light', 'logo', 'man', 'men',
+#             'motorcycle', 'mountain', 'mouth', 'neck', 'nose', 'number', 'orange', 'pant', 'paper', 'paw',
+#             'people', 'person', 'phone', 'pillow', 'pizza', 'plane', 'plant', 'plate', 'player', 'pole', 'post',
+#             'pot', 'racket', 'railing', 'rock', 'roof', 'room', 'screen', 'seat', 'sheep', 'shelf', 'shirt',
+#             'shoe', 'short', 'sidewalk', 'sign', 'sink', 'skateboard', 'ski', 'skier', 'sneaker', 'snow',
+#             'sock', 'stand', 'street', 'surfboard', 'table', 'tail', 'tie', 'tile', 'tire', 'toilet', 'towel',
+#             'tower', 'track', 'train', 'tree', 'truck', 'trunk', 'umbrella', 'vase', 'vegetable', 'vehicle',
+#             'wave', 'wheel', 'window', 'windshield', 'wing', 'wire', 'woman', 'zebra']
+
+# REL_CLASSES = ['__background__', 'above', 'across', 'against', 'along', 'and', 'at', 'attached to', 'behind',
+#                'belonging to', 'between', 'carrying', 'covered in', 'covering', 'eating', 'flying in', 'for',
+#                'from', 'growing on', 'hanging from', 'has', 'holding', 'in', 'in front of', 'laying on',
+#                'looking at', 'lying on', 'made of', 'mounted on', 'near', 'of', 'on', 'on back of', 'over',
+#                'painted on', 'parked on', 'part of', 'playing', 'riding', 'says', 'sitting on', 'standing on',
+#                'to', 'under', 'using', 'walking in', 'walking on', 'watching', 'wearing', 'wears', 'with']
+
+# # ==== UTILS ====
+# def box_cxcywh_to_xyxy(x):
+#     x_c, y_c, w, h = x.unbind(1)
+#     b = [(x_c - 0.5 * w), (y_c - 0.5 * h), (x_c + 0.5 * w), (y_c + 0.5 * h)]
+#     return torch.stack(b, dim=1)
+
+# def rescale_bboxes(out_bbox, size, device):
+#     img_w, img_h = size
+#     b = box_cxcywh_to_xyxy(out_bbox)
+#     b = b * torch.tensor([img_w, img_h, img_w, img_h], dtype=torch.float32).to(device)
+#     return b
+
+# # ==== TRANSLATION ====
+# def load_translation_model(model_name, device):
+#     tokenizer = AutoTokenizer.from_pretrained(model_name)
+#     model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto", device_map="auto")
+#     return tokenizer, model
+
+# def translate_sentence(tokenizer, model, sentence, device):
+#     prompt = f"Translate the following English text to Vietnamese:\n{sentence}"
+#     messages = [{"role": "user", "content": prompt}]
+#     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True, enable_thinking=True)
+#     inputs = tokenizer([text], return_tensors="pt").to(device)
+#     with torch.no_grad():
+#         output_ids = model.generate(**inputs, max_new_tokens=1024)[0][len(inputs.input_ids[0]):].tolist()
+#     try:
+#         idx = len(output_ids) - output_ids[::-1].index(151668)  # </think>
+#     except ValueError:
+#         idx = 0
+#     translation = tokenizer.decode(output_ids[idx:], skip_special_tokens=True).strip()
+#     return translation
+
+# # ==== MAIN ====
+# def main():
+#     args = get_args()
+#     os.makedirs(args.output_dir, exist_ok=True)
+
+#     # Build RelTR model
+#     class ArgsRelTR:
+#         def __init__(self):
+#             self.lr_backbone = 1e-5
+#             self.dataset = 'vg'
+#             self.backbone = 'resnet50'
+#             self.dilation = False
+#             self.position_embedding = 'sine'
+#             self.enc_layers = 6
+#             self.dec_layers = 6
+#             self.dim_feedforward = 2048
+#             self.hidden_dim = 256
+#             self.dropout = 0.1
+#             self.nheads = 8
+#             self.num_entities = 100
+#             self.num_triplets = 200
+#             self.pre_norm = False
+#             self.aux_loss = True
+#             self.device = args.device
+#             self.resume = args.checkpoint
+#             self.set_cost_class = 1
+#             self.set_cost_bbox = 5
+#             self.set_cost_giou = 2
+#             self.set_iou_threshold = 0.7
+#             self.bbox_loss_coef = 5
+#             self.giou_loss_coef = 2
+#             self.rel_loss_coef = 1
+#             self.eos_coef = 0.1
+#             self.return_interm_layers = False
+
+#     reltr_args = ArgsRelTR()
+#     model_reltr, _, _ = build_model(reltr_args)
+#     checkpoint = torch.load(reltr_args.resume, map_location=args.device, weights_only=False)
+#     model_reltr.load_state_dict(checkpoint['model'])
+#     model_reltr.to(args.device)
+#     model_reltr.eval()
+
+#     # Translation model
+#     tokenizer_trans, model_trans = load_translation_model(args.translation_model, args.device)
+
+#     # Image transform
+#     transform = T.Compose([T.Resize(800), T.ToTensor(), T.Normalize([0.485, 0.456, 0.406],[0.229,0.224,0.225])])
+
+#     results_all = []
+#     img_files = sorted([f for f in os.listdir(args.img_dir) if f.lower().endswith(('.jpg','.jpeg','.png'))])
+#     print(f"Processing {len(img_files)} images...")
+
+#     for img_file in img_files:
+#         img_path = os.path.join(args.img_dir, img_file)
+#         try:
+#             im = Image.open(img_path).convert("RGB")
+#         except:
+#             print(f"Cannot open {img_file}, skipping.")
+#             continue
+
+#         img_tensor = transform(im).unsqueeze(0).to(args.device)
+#         with torch.no_grad():
+#             outputs = model_reltr(img_tensor)
+
+#         probas = outputs['rel_logits'].softmax(-1)[0, :, :-1]
+#         probas_sub = outputs['sub_logits'].softmax(-1)[0, :, :-1]
+#         probas_obj = outputs['obj_logits'].softmax(-1)[0, :, :-1]
+
+#         keep = torch.logical_and(probas.max(-1).values>args.threshold,
+#                                  torch.logical_and(probas_sub.max(-1).values>args.threshold,
+#                                                    probas_obj.max(-1).values>args.threshold))
+
+#         topk = args.topk
+#         keep_queries = torch.nonzero(keep, as_tuple=True)[0]
+#         scores = probas[keep_queries].max(-1)[0] * probas_sub[keep_queries].max(-1)[0] * probas_obj[keep_queries].max(-1)[0]
+#         _, indices = scores.topk(min(topk, len(scores)))
+#         keep_queries = keep_queries[indices]
+
+#         seen_rel = set()
+#         scene_graph = []
+
+#         for idx in keep_queries:
+#             subj = CLASSES[probas_sub[idx].argmax()]
+#             pred = REL_CLASSES[probas[idx].argmax()]
+#             obj = CLASSES[probas_obj[idx].argmax()]
+#             score = float(probas[idx].max().item())
+
+#             key = f"{subj}_{pred}_{obj}"
+#             if key in seen_rel:
+#                 continue
+#             seen_rel.add(key)
+
+#             eng_sentence = f"{subj} {pred} {obj}"
+#             try:
+#                 translation_vi = translate_sentence(tokenizer_trans, model_trans, eng_sentence, args.device)
+#             except:
+#                 translation_vi = eng_sentence
+
+#             scene_graph.append({
+#                 "subject_en": subj,
+#                 "predicate_en": pred,
+#                 "object_en": obj,
+#                 "translated_vi": translation_vi,
+#                 "score": round(score, 4)
+#             })
+
+#         results_all.append({"file_name": img_file, "scene_graph": scene_graph})
+#         print(f"Processed {img_file}: {len(scene_graph)} relations.")
+
+#     # Save JSON
+#     with open(os.path.join(args.output_dir, "scene_graphs_translated.json"), "w", encoding="utf-8") as f:
+#         json.dump(results_all, f, ensure_ascii=False, indent=2)
+
+#     print(f"Done. Results saved in {args.output_dir}/scene_graphs_translated.json")
+
+# if __name__ == "__main__":
+#     main()
+
+
+import os
+import json
+from PIL import Image
 import torch
 import torchvision.transforms as T
 from models import build_model
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import argparse
 
+# ==== ARGPARSE ====
+def get_args():
+    parser = argparse.ArgumentParser(description="RelTR inference + translate scene graph via LLM")
+    parser.add_argument('--img_dir', type=str, required=True, help="Folder of test images")
+    parser.add_argument('--output_dir', type=str, default="outputs_reltr", help="Folder to save JSON results")
+    parser.add_argument('--device', type=str, default='cuda', help="Device: 'cuda' or 'cpu'")
+    parser.add_argument('--checkpoint', type=str, required=True, help="Path to RelTR checkpoint")
+    parser.add_argument('--translation_model', type=str, default="Qwen/Qwen3-8B", help="HuggingFace model for translation")
+    parser.add_argument('--threshold', type=float, default=0.25, help="Confidence threshold for keeping relations")
+    parser.add_argument('--topk', type=int, default=10, help="Top-K relations per image")
+    return parser.parse_args()
 
-def get_args_parser():
-    parser = argparse.ArgumentParser('Set transformer detector', add_help=False)
-    parser.add_argument('--lr_backbone', default=1e-5, type=float)
-    parser.add_argument('--dataset', default='vg')
+# ==== LABELS ====
+CLASSES = [ 'N/A', 'airplane', 'animal', 'arm', 'bag', 'banana', 'basket', 'beach', 'bear', 'bed', 'bench', 'bike',
+            'bird', 'board', 'boat', 'book', 'boot', 'bottle', 'bowl', 'box', 'boy', 'branch', 'building',
+            'bus', 'cabinet', 'cap', 'car', 'cat', 'chair', 'child', 'clock', 'coat', 'counter', 'cow', 'cup',
+            'curtain', 'desk', 'dog', 'door', 'drawer', 'ear', 'elephant', 'engine', 'eye', 'face', 'fence',
+            'finger', 'flag', 'flower', 'food', 'fork', 'fruit', 'giraffe', 'girl', 'glass', 'glove', 'guy',
+            'hair', 'hand', 'handle', 'hat', 'head', 'helmet', 'hill', 'horse', 'house', 'jacket', 'jean',
+            'kid', 'kite', 'lady', 'lamp', 'laptop', 'leaf', 'leg', 'letter', 'light', 'logo', 'man', 'men',
+            'motorcycle', 'mountain', 'mouth', 'neck', 'nose', 'number', 'orange', 'pant', 'paper', 'paw',
+            'people', 'person', 'phone', 'pillow', 'pizza', 'plane', 'plant', 'plate', 'player', 'pole', 'post',
+            'pot', 'racket', 'railing', 'rock', 'roof', 'room', 'screen', 'seat', 'sheep', 'shelf', 'shirt',
+            'shoe', 'short', 'sidewalk', 'sign', 'sink', 'skateboard', 'ski', 'skier', 'sneaker', 'snow',
+            'sock', 'stand', 'street', 'surfboard', 'table', 'tail', 'tie', 'tile', 'tire', 'toilet', 'towel',
+            'tower', 'track', 'train', 'tree', 'truck', 'trunk', 'umbrella', 'vase', 'vegetable', 'vehicle',
+            'wave', 'wheel', 'window', 'windshield', 'wing', 'wire', 'woman', 'zebra']
 
-    # image path
-    parser.add_argument('--img_path', type=str, default='demo/vg1.jpg',
-                        help="Path of the test image")
+REL_CLASSES = ['__background__', 'above', 'across', 'against', 'along', 'and', 'at', 'attached to', 'behind',
+               'belonging to', 'between', 'carrying', 'covered in', 'covering', 'eating', 'flying in', 'for',
+               'from', 'growing on', 'hanging from', 'has', 'holding', 'in', 'in front of', 'laying on',
+               'looking at', 'lying on', 'made of', 'mounted on', 'near', 'of', 'on', 'on back of', 'over',
+               'painted on', 'parked on', 'part of', 'playing', 'riding', 'says', 'sitting on', 'standing on',
+               'to', 'under', 'using', 'walking in', 'walking on', 'watching', 'wearing', 'wears', 'with']
 
-    # * Backbone
-    parser.add_argument('--backbone', default='resnet50', type=str,
-                        help="Name of the convolutional backbone to use")
-    parser.add_argument('--dilation', action='store_true',
-                        help="If true, we replace stride with dilation in the last convolutional block (DC5)")
-    parser.add_argument('--position_embedding', default='sine', type=str, choices=('sine', 'learned'),
-                        help="Type of positional embedding to use on top of the image features")
+# ==== UTILS ====
+def box_cxcywh_to_xyxy(x):
+    x_c, y_c, w, h = x.unbind(1)
+    b = [(x_c - 0.5 * w), (y_c - 0.5 * h), (x_c + 0.5 * w), (y_c + 0.5 * h)]
+    return torch.stack(b, dim=1)
 
-    # * Transformer
-    parser.add_argument('--enc_layers', default=6, type=int,
-                        help="Number of encoding layers in the transformer")
-    parser.add_argument('--dec_layers', default=6, type=int,
-                        help="Number of decoding layers in the transformer")
-    parser.add_argument('--dim_feedforward', default=2048, type=int,
-                        help="Intermediate size of the feedforward layers in the transformer blocks")
-    parser.add_argument('--hidden_dim', default=256, type=int,
-                        help="Size of the embeddings (dimension of the transformer)")
-    parser.add_argument('--dropout', default=0.1, type=float,
-                        help="Dropout applied in the transformer")
-    parser.add_argument('--nheads', default=8, type=int,
-                        help="Number of attention heads inside the transformer's attentions")
-    parser.add_argument('--num_entities', default=100, type=int,
-                        help="Number of query slots")
-    parser.add_argument('--num_triplets', default=200, type=int,
-                        help="Number of query slots")
-    parser.add_argument('--pre_norm', action='store_true')
+def rescale_bboxes(out_bbox, size, device):
+    img_w, img_h = size
+    b = box_cxcywh_to_xyxy(out_bbox)
+    b = b * torch.tensor([img_w, img_h, img_w, img_h], dtype=torch.float32).to(device)
+    return b
 
-    # Loss
-    parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_false',
-                        help="Disables auxiliary decoding losses (loss at each layer)")
+# ==== TRANSLATION ====
+def load_translation_model(model_name, device):
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto", device_map="auto")
+    return tokenizer, model
 
-    parser.add_argument('--device', default='cuda',
-                        help='device to use for training / testing')
-    parser.add_argument('--resume', default='ckpt/checkpoint0149_oi.pth', help='resume from checkpoint')
-    parser.add_argument('--set_cost_class', default=1, type=float,
-                        help="Class coefficient in the matching cost")
-    parser.add_argument('--set_cost_bbox', default=5, type=float,
-                        help="L1 box coefficient in the matching cost")
-    parser.add_argument('--set_cost_giou', default=2, type=float,
-                        help="giou box coefficient in the matching cost")
-    parser.add_argument('--set_iou_threshold', default=0.7, type=float,
-                        help="giou box coefficient in the matching cost")
-    parser.add_argument('--bbox_loss_coef', default=5, type=float)
-    parser.add_argument('--giou_loss_coef', default=2, type=float)
-    parser.add_argument('--rel_loss_coef', default=1, type=float)
-    parser.add_argument('--eos_coef', default=0.1, type=float,
-                        help="Relative classification weight of the no-object class")
+def translate_and_split(tokenizer, model, sentence):
+    """
+    Translate English sentence to Vietnamese and split into subject, predicate, object
+    """
+    prompt = f"""
+    Translate the following English sentence into Vietnamese, and separate it into Subject, Predicate, and Object.
+    Format your answer as JSON with keys: "subject_vi", "predicate_vi", "object_vi".
 
+    Sentence: "{sentence}"
+    """
+    messages = [{"role": "user", "content": prompt}]
+    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True, enable_thinking=True)
+    
+    model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
 
-    # distributed training parameters
-    parser.add_argument('--return_interm_layers', action='store_true',
-                        help="Return the fpn if there is the tag")
-    return parser
+    # conduct text completion
+    generated_ids = model.generate(
+        **model_inputs,
+        max_new_tokens=32768
+    )
+    output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist() 
 
+    # parsing thinking content
+    try:
+        # rindex finding 151668 (</think>)
+        index = len(output_ids) - output_ids[::-1].index(151668)
+    except ValueError:
+        index = 0
 
-def main(args):
+    out_text = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
+    try:
+        parsed = json.loads(out_text)
+        return parsed.get("subject_vi",""), parsed.get("predicate_vi",""), parsed.get("object_vi","")
+    except json.JSONDecodeError:
+        return out_text, "", ""
 
-    transform = T.Compose([
-        T.Resize(800),
-        T.ToTensor(),
-        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
-    # for output bounding box post-processing
-    def box_cxcywh_to_xyxy(x):
-        x_c, y_c, w, h = x.unbind(1)
-        b = [(x_c - 0.5 * w), (y_c - 0.5 * h),
-             (x_c + 0.5 * w), (y_c + 0.5 * h)]
-        return torch.stack(b, dim=1)
+# ==== MAIN ====
+def main():
+    args = get_args()
+    os.makedirs(args.output_dir, exist_ok=True)
 
-    def rescale_bboxes(out_bbox, size):
-        img_w, img_h = size
-        b = box_cxcywh_to_xyxy(out_bbox)
-        b = b * torch.tensor([img_w, img_h, img_w, img_h], dtype=torch.float32)
-        return b
+    # Build RelTR
+    class ArgsRelTR:
+        def __init__(self):
+            self.lr_backbone = 1e-5
+            self.dataset = 'vg'
+            self.backbone = 'resnet50'
+            self.dilation = False
+            self.position_embedding = 'sine'
+            self.enc_layers = 6
+            self.dec_layers = 6
+            self.dim_feedforward = 2048
+            self.hidden_dim = 256
+            self.dropout = 0.1
+            self.nheads = 8
+            self.num_entities = 100
+            self.num_triplets = 200
+            self.pre_norm = False
+            self.aux_loss = True
+            self.device = args.device
+            self.resume = args.checkpoint
+            self.set_cost_class = 1
+            self.set_cost_bbox = 5
+            self.set_cost_giou = 2
+            self.set_iou_threshold = 0.7
+            self.bbox_loss_coef = 5
+            self.giou_loss_coef = 2
+            self.rel_loss_coef = 1
+            self.eos_coef = 0.1
+            self.return_interm_layers = False
 
-    # VG classes
-    CLASSES = [ 'N/A', 'airplane', 'animal', 'arm', 'bag', 'banana', 'basket', 'beach', 'bear', 'bed', 'bench', 'bike',
-                'bird', 'board', 'boat', 'book', 'boot', 'bottle', 'bowl', 'box', 'boy', 'branch', 'building',
-                'bus', 'cabinet', 'cap', 'car', 'cat', 'chair', 'child', 'clock', 'coat', 'counter', 'cow', 'cup',
-                'curtain', 'desk', 'dog', 'door', 'drawer', 'ear', 'elephant', 'engine', 'eye', 'face', 'fence',
-                'finger', 'flag', 'flower', 'food', 'fork', 'fruit', 'giraffe', 'girl', 'glass', 'glove', 'guy',
-                'hair', 'hand', 'handle', 'hat', 'head', 'helmet', 'hill', 'horse', 'house', 'jacket', 'jean',
-                'kid', 'kite', 'lady', 'lamp', 'laptop', 'leaf', 'leg', 'letter', 'light', 'logo', 'man', 'men',
-                'motorcycle', 'mountain', 'mouth', 'neck', 'nose', 'number', 'orange', 'pant', 'paper', 'paw',
-                'people', 'person', 'phone', 'pillow', 'pizza', 'plane', 'plant', 'plate', 'player', 'pole', 'post',
-                'pot', 'racket', 'railing', 'rock', 'roof', 'room', 'screen', 'seat', 'sheep', 'shelf', 'shirt',
-                'shoe', 'short', 'sidewalk', 'sign', 'sink', 'skateboard', 'ski', 'skier', 'sneaker', 'snow',
-                'sock', 'stand', 'street', 'surfboard', 'table', 'tail', 'tie', 'tile', 'tire', 'toilet', 'towel',
-                'tower', 'track', 'train', 'tree', 'truck', 'trunk', 'umbrella', 'vase', 'vegetable', 'vehicle',
-                'wave', 'wheel', 'window', 'windshield', 'wing', 'wire', 'woman', 'zebra']
+    reltr_args = ArgsRelTR()
+    model_reltr, _, _ = build_model(reltr_args)
+    checkpoint = torch.load(reltr_args.resume, map_location=args.device, weights_only=False)
+    model_reltr.load_state_dict(checkpoint['model'])
+    model_reltr.to(args.device)
+    model_reltr.eval()
 
-    REL_CLASSES = ['__background__', 'above', 'across', 'against', 'along', 'and', 'at', 'attached to', 'behind',
-                'belonging to', 'between', 'carrying', 'covered in', 'covering', 'eating', 'flying in', 'for',
-                'from', 'growing on', 'hanging from', 'has', 'holding', 'in', 'in front of', 'laying on',
-                'looking at', 'lying on', 'made of', 'mounted on', 'near', 'of', 'on', 'on back of', 'over',
-                'painted on', 'parked on', 'part of', 'playing', 'riding', 'says', 'sitting on', 'standing on',
-                'to', 'under', 'using', 'walking in', 'walking on', 'watching', 'wearing', 'wears', 'with']
+    # Load LLM translation model
+    tokenizer_trans, model_trans = load_translation_model(args.translation_model, args.device)
 
-    model, _, _ = build_model(args)
-    ckpt = torch.load(args.resume)
-    model.load_state_dict(ckpt['model'])
-    model.eval()
+    # Image transform
+    transform = T.Compose([T.Resize(800), T.ToTensor(), T.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])])
 
-    img_path = args.img_path
-    im = Image.open(img_path)
+    results_all = []
+    img_files = sorted([f for f in os.listdir(args.img_dir) if f.lower().endswith(('.jpg','.jpeg','.png'))])
+    print(f"Processing {len(img_files)} images...")
 
-    # mean-std normalize the input image (batch-size: 1)
-    img = transform(im).unsqueeze(0)
+    for img_file in img_files:
+        img_path = os.path.join(args.img_dir, img_file)
+        try:
+            im = Image.open(img_path).convert("RGB")
+        except:
+            print(f"Cannot open {img_file}, skipping.")
+            continue
 
-    # propagate through the model
-    outputs = model(img)
+        img_tensor = transform(im).unsqueeze(0).to(args.device)
+        with torch.no_grad():
+            outputs = model_reltr(img_tensor)
 
-    # keep only predictions with 0.+ confidence
-    probas = outputs['rel_logits'].softmax(-1)[0, :, :-1]
-    probas_sub = outputs['sub_logits'].softmax(-1)[0, :, :-1]
-    probas_obj = outputs['obj_logits'].softmax(-1)[0, :, :-1]
-    keep = torch.logical_and(probas.max(-1).values > 0.3, torch.logical_and(probas_sub.max(-1).values > 0.3,
-                                                                            probas_obj.max(-1).values > 0.3))
+        probas = outputs['rel_logits'].softmax(-1)[0,:,:-1]
+        probas_sub = outputs['sub_logits'].softmax(-1)[0,:,:-1]
+        probas_obj = outputs['obj_logits'].softmax(-1)[0,:,:-1]
 
-    # convert boxes from [0; 1] to image scales
-    sub_bboxes_scaled = rescale_bboxes(outputs['sub_boxes'][0, keep], im.size)
-    obj_bboxes_scaled = rescale_bboxes(outputs['obj_boxes'][0, keep], im.size)
-
-    topk = 10
-    keep_queries = torch.nonzero(keep, as_tuple=True)[0]
-    indices = torch.argsort(-probas[keep_queries].max(-1)[0] * probas_sub[keep_queries].max(-1)[0] * probas_obj[keep_queries].max(-1)[0])[:topk]
-    keep_queries = keep_queries[indices]
-
-    # use lists to store the outputs via up-values
-    conv_features, dec_attn_weights_sub, dec_attn_weights_obj = [], [], []
-
-    hooks = [
-        model.backbone[-2].register_forward_hook(
-            lambda self, input, output: conv_features.append(output)
-        ),
-        model.transformer.decoder.layers[-1].cross_attn_sub.register_forward_hook(
-            lambda self, input, output: dec_attn_weights_sub.append(output[1])
-        ),
-        model.transformer.decoder.layers[-1].cross_attn_obj.register_forward_hook(
-            lambda self, input, output: dec_attn_weights_obj.append(output[1])
+        keep = torch.logical_and(
+            probas.max(-1).values>args.threshold,
+            torch.logical_and(probas_sub.max(-1).values>args.threshold, probas_obj.max(-1).values>args.threshold)
         )
-    ]
-    with torch.no_grad():
-        # propagate through the model
-        outputs = model(img)
 
-        for hook in hooks:
-            hook.remove()
+        keep_queries = torch.nonzero(keep, as_tuple=True)[0]
+        scores = probas[keep_queries].max(-1)[0]*probas_sub[keep_queries].max(-1)[0]*probas_obj[keep_queries].max(-1)[0]
+        _, indices = scores.topk(min(args.topk, len(scores)))
+        keep_queries = keep_queries[indices]
 
-        # don't need the list anymore
-        conv_features = conv_features[0]
-        dec_attn_weights_sub = dec_attn_weights_sub[0]
-        dec_attn_weights_obj = dec_attn_weights_obj[0]
+        scene_graph = []
+        seen_rel = set()
 
-        # get the feature map shape
-        h, w = conv_features['0'].tensors.shape[-2:]
-        im_w, im_h = im.size
+        for idx in keep_queries:
+            subj = CLASSES[probas_sub[idx].argmax()]
+            pred = REL_CLASSES[probas[idx].argmax()]
+            obj = CLASSES[probas_obj[idx].argmax()]
+      
+            key = f"{subj}_{pred}_{obj}"
+            if key in seen_rel:
+                continue
+            seen_rel.add(key)
 
-        fig, axs = plt.subplots(ncols=len(indices), nrows=3, figsize=(22, 7))
-        for idx, ax_i, (sxmin, symin, sxmax, symax), (oxmin, oymin, oxmax, oymax) in \
-                zip(keep_queries, axs.T, sub_bboxes_scaled[indices], obj_bboxes_scaled[indices]):
-            ax = ax_i[0]
-            ax.imshow(dec_attn_weights_sub[0, idx].view(h, w))
-            ax.axis('off')
-            ax.set_title(f'query id: {idx.item()}')
-            ax = ax_i[1]
-            ax.imshow(dec_attn_weights_obj[0, idx].view(h, w))
-            ax.axis('off')
-            ax = ax_i[2]
-            ax.imshow(im)
-            ax.add_patch(plt.Rectangle((sxmin, symin), sxmax - sxmin, symax - symin,
-                                       fill=False, color='blue', linewidth=2.5))
-            ax.add_patch(plt.Rectangle((oxmin, oymin), oxmax - oxmin, oymax - oymin,
-                                       fill=False, color='orange', linewidth=2.5))
+            eng_sentence = f"{subj} {pred} {obj}"
+            subj_vi, pred_vi, obj_vi = translate_and_split(tokenizer_trans, model_trans, eng_sentence)
 
-            ax.axis('off')
-            ax.set_title(CLASSES[probas_sub[idx].argmax()]+' '+REL_CLASSES[probas[idx].argmax()]+' '+CLASSES[probas_obj[idx].argmax()], fontsize=10)
+            scene_graph.append({
+                "subject_en": subj,
+                "predicate_en": pred,
+                "object_en": obj,
+                "subject_vi": subj_vi,
+                "predicate_vi": pred_vi,
+                "object_vi": obj_vi,
+            })
 
-        fig.tight_layout()
-        plt.show()
+        results_all.append({"file_name": img_file, "scene_graph": scene_graph})
+        print(f"Processed {img_file}: {len(scene_graph)} relations.")
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser('RelTR inference', parents=[get_args_parser()])
-    args = parser.parse_args()
-    main(args)
+    # Save JSON
+    with open(os.path.join(args.output_dir, "scene_graphs_translated_train.json"), "w", encoding="utf-8") as f:
+        json.dump(results_all, f, ensure_ascii=False, indent=2)
+    print(f"Done. Results saved in {args.output_dir}/scene_graphs_translated_train.json")
+
+if __name__=="__main__":
+    main()

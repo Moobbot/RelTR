@@ -4,6 +4,8 @@ Adapted from Danfei Xu. In particular, slow code was removed
 import numpy as np
 from functools import reduce
 import math
+# import sys
+# sys.path.append("/content/drive/MyDrive/classroom-behavior/TSG/RelTR")
 from lib.pytorch_misc import intersect_2d, argsort_desc
 from lib.fpn.box_intersections_cpu.bbox import bbox_overlaps
 np.set_printoptions(precision=3)

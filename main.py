@@ -81,8 +81,8 @@ def get_args_parser():
                         help="Relative classification weight of the no-object class")
 
     # dataset parameters
-    parser.add_argument('--dataset', default='vg')
-    parser.add_argument('--ann_path', default='./data/vg/', type=str)
+    parser.add_argument('--dataset', default='ui')
+    parser.add_argument('--ann_path', default='/content/drive/MyDrive/classroom-behavior/TSG/uitvic/uitvic_dataset/', type=str)
     parser.add_argument('--img_folder', default='/home/cong/Dokumente/tmp/data/visualgenome/images/', type=str)
 
     parser.add_argument('--output_dir', default='',
